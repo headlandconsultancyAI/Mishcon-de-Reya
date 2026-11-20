@@ -21,6 +21,7 @@ import os
 import re
 import statistics
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -74,8 +75,17 @@ def fetch_from_apify(token, task_id, dataset_id):
     else:
         sys.exit("APIFY_TASK_ID isn't set, and no dataset ID came with the webhook.")
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        items = json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            items = json.load(r)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            sys.exit("Apify couldn't find a successful run for this task. Run the task once in Apify "
+                     "(click Start), wait for it to finish, then run this workflow again. "
+                     "If it has run, check APIFY_TASK_ID.")
+        if e.code in (401, 403):
+            sys.exit("Apify rejected the token. Check the APIFY_TOKEN secret.")
+        raise
     if not isinstance(items, list):
         sys.exit(f"Apify returned something unexpected: {str(items)[:200]}")
     return items
@@ -244,8 +254,8 @@ def build():
     solid = [d for d in depts if d["orig"] >= THIN_DEPT_POSTS]
     fact3 = ""
     if len(solid) >= 2:
-        fact3 = (f"<b>{solid[0]['name']} leads on engagement</b>{solid[0]['name']} partners get a median of "
-                 f"{fmt(solid[0]['median'])} per post. {solid[-1]['name']} partners get {fmt(solid[-1]['median'])}.")
+        fact3 = (f"<b>{solid[0]['name']} leads on engagement</b>{solid[0]['name']} gets a median of "
+                 f"{fmt(solid[0]['median'])} per post. {solid[-1]['name']} gets {fmt(solid[-1]['median'])}.")
     facts = "".join(f"<p>{x}</p>" for x in (fact1, fact2, fact3) if x)
 
     for p in people:

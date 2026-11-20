@@ -153,7 +153,7 @@ details.more summary span{font-weight:400;color:var(--muted)}
   <div class="wrap">
     <p class="wordmark">Mishcon de Reya</p>
     <h1>__HEADLINE__</h1>
-    <p class="sub">LinkedIn engagement for __NPEOPLE__ Mishcon de Reya partners and knowledge lawyers, ranked by the median engagement on their own original posts. __PERIOD__, updated every Monday.</p>
+    <p class="sub">LinkedIn engagement for __NPEOPLE__ Mishcon de Reya partners, knowledge lawyers and business leaders, ranked by the median engagement on their own original posts. __PERIOD__, updated every Monday.</p>
     <div class="facts">__FACTS__
     </div>
   </div>
@@ -197,7 +197,7 @@ details.more summary span{font-weight:400;color:var(--muted)}
     <div class="wrap">
       <h2 id="method-h">How this was measured</h2>
       <ul>
-        <li>Source: LinkedIn posts from the profiles of __NSTAFF__ Mishcon de Reya partners and knowledge lawyers, scraped weekly. This version covers a rolling 12 months, __START_LONG__ to __END_LONG__. Departments come from the firm's partner list.</li>
+        <li>Source: LinkedIn posts from the profiles of __NSTAFF__ Mishcon de Reya partners, knowledge lawyers and business leaders, scraped weekly. This version covers a rolling 12 months, __START_LONG__ to __END_LONG__. Departments come from the people list in the repo.</li>
         <li>__NPEOPLE__ people had at least one post or repost captured. The other __NSILENT__ are listed separately. Most will simply not have posted, but a few profiles couldn't be matched, so treat that list as indicative.</li>
         <li>Only original posts count. A repost shows the original author's engagement, so including it would credit people for other posts' performance.</li>
         <li>Median is the main measure because one viral post can drag an average a long way. The median shows what a typical post gets.</li>
@@ -249,7 +249,7 @@ function renderDepts(){
       <span class="dn">${esc(d.name)}</span>
       <span class="bar" aria-hidden="true"><i style="width:${(d.median||0)/max*100}%"></i></span>
       <span class="dv">${fmt(d.median)}</span>
-      <span class="dm">${d.orig} original posts from ${d.posting} of ${d.staff} partners${thin?". Too few posts to compare fairly":""}</span>
+      <span class="dm">${d.orig} original posts from ${d.posting} of ${d.staff} people${thin?". Too few posts to compare fairly":""}</span>
     </button></li>`;}).join("");
   document.querySelectorAll("#depts button").forEach(b=>b.addEventListener("click",()=>setDept(b.dataset.dept===dept?"All":b.dataset.dept)));
 }
