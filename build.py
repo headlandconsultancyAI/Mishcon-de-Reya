@@ -158,6 +158,11 @@ def load_partners():
     return partners, by_slug
 
 
+def groups_of(row):
+    """Extra buckets someone sits in on top of their department, e.g. 'Fee earner leadership'."""
+    return [g.strip() for g in (row.get("Groups") or "").split(";") if g.strip()]
+
+
 def eng(p):
     return p["reactions"] + p["comments"] + p["shares"]
 
@@ -209,6 +214,7 @@ def build():
             mean=round(sum(es) / len(es), 1) if es else None,
             totalEng=sum(es),
             reactions=sum(p["reactions"] for p in orig), comments=sum(p["comments"] for p in orig),
+            groups=groups_of(row), office=row.get("Office", ""),
             focus=f[0] if f else "", focusNote=f[1] if f else "",
             top=[dict(text=t["text"].replace("\n", " ")[:170], url=t["url"], eng=eng(t), date=t["date"][:10]) for t in top],
             _es=es,
@@ -223,10 +229,20 @@ def build():
                           median=statistics.median(es) if es else None))
     depts.sort(key=lambda d: (d["orig"] < THIN_DEPT_POSTS, -(d["median"] or 0)))
 
+    # Groups overlap departments, so they're summarised separately
+    group_names = sorted({g for r in partners for g in groups_of(r)})
+    groups = []
+    for gn in group_names:
+        members = {r["Name"] for r in partners if gn in groups_of(r)}
+        g = [p for p in people if p["name"] in members]
+        es = [e for p in g for e in p["_es"]]
+        groups.append(dict(name=gn, people=len(g), staff=len(members), posting=sum(p["orig"] > 0 for p in g),
+                           orig=len(es), median=statistics.median(es) if es else None, group=True))
+
     notes = {"Not found": "profile not found", "Check": "profile match unconfirmed"}
     names_with_posts = {p["name"] for p in people}
     silent = sorted(
-        [dict(name=r["Name"], dept=r["Department"], note=notes.get(r.get("Match status", ""), ""))
+        [dict(name=r["Name"], dept=r["Department"], groups=groups_of(r), office=r.get("Office", ""), note=notes.get(r.get("Match status", ""), ""))
          for r in partners if r["Name"] not in names_with_posts],
         key=lambda x: (x["dept"], x["name"].split()[-1]))
 
@@ -254,8 +270,8 @@ def build():
     solid = [d for d in depts if d["orig"] >= THIN_DEPT_POSTS]
     fact3 = ""
     if len(solid) >= 2:
-        fact3 = (f"<b>{solid[0]['name']} leads on engagement</b>{solid[0]['name']} gets a median of "
-                 f"{fmt(solid[0]['median'])} per post. {solid[-1]['name']} gets {fmt(solid[-1]['median'])}.")
+        fact3 = (f"<b>Top department: {solid[0]['name']}</b>A median of {fmt(solid[0]['median'])} per original post. "
+                 f"{solid[-1]['name']} is lowest on {fmt(solid[-1]['median'])}.")
     facts = "".join(f"<p>{x}</p>" for x in (fact1, fact2, fact3) if x)
 
     for p in people:
@@ -275,6 +291,7 @@ def build():
         "__NSILENT__": str(len(silent)),
         "__DATA__": json.dumps(people, ensure_ascii=False),
         "__DEPTS__": json.dumps(depts),
+        "__GROUPS__": json.dumps(groups),
         "__SILENT__": json.dumps(silent, ensure_ascii=False),
     }
     for k, v in subs.items():
