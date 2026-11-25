@@ -48,6 +48,8 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 /* Department filter */
 .filter{position:sticky;top:0;z-index:5;background:var(--page);border-bottom:1px solid var(--rule)}
 .filter .wrap{display:flex;align-items:center;gap:8px 16px;padding-top:12px;padding-bottom:12px}
+.filter .wrap + .wrap{padding-top:0}
+.filter .lab{min-width:84px}
 .filter .lab{font-size:14px;font-weight:700;white-space:nowrap}
 .chips{display:flex;flex-wrap:wrap;gap:8px;padding:2px}
 .chips::-webkit-scrollbar{display:none}
@@ -55,6 +57,10 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .chips button span{font-weight:400;opacity:.75;margin-left:4px}
 .chips button[aria-pressed="true"]{background:var(--orange);border-color:var(--orange);color:var(--white)}
 .chips button[aria-pressed="true"] span{opacity:.9}
+.chips button.grp{border-style:dashed}
+.chips button.grp[aria-pressed="true"]{border-style:solid}
+.chipdiv{flex:0 0 1px;align-self:stretch;background:var(--rule);margin:0 6px}
+.depts li.grouphead{font-size:13px;color:var(--muted);padding:22px 0 8px;border-bottom:1px solid var(--rule)}
 
 section{padding:clamp(48px,7vw,96px) 0 0}
 h2{font-family:var(--serif);font-weight:400;color:var(--orange);font-size:clamp(30px,4.2vw,56px);line-height:1.08;margin:0;max-width:24ch}
@@ -164,6 +170,10 @@ details.more summary span{font-weight:400;color:var(--muted)}
     <span class="lab" id="filter-lab">Department</span>
     <div class="chips" role="group" aria-labelledby="filter-lab" id="chips"></div>
   </div>
+  <div class="wrap">
+    <span class="lab" id="office-lab">Office</span>
+    <div class="chips" role="group" aria-labelledby="office-lab" id="offices"></div>
+  </div>
 </nav>
 
 <main>
@@ -219,20 +229,42 @@ details.more summary span{font-weight:400;color:var(--muted)}
 <script>
 const PEOPLE = __DATA__;
 const DEPTS = __DEPTS__;
+const GROUPS = __GROUPS__;
+const ALL_BUCKETS = DEPTS.concat(GROUPS);
 const SILENT = __SILENT__;
 const MIN_POSTS = 5;
 const fmt = n => n==null ? "" : (Math.round(n*10)/10).toLocaleString("en-GB");
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const heads = {median:"Median engagement per original post",mean:"Average engagement per original post",totalEng:"Total engagement on original posts"};
-let metric = "median", dept = "All";
-try{ const s=sessionStorage.getItem("mdr-dept"); if(s && (s==="All"||DEPTS.some(d=>d.name===s))) dept=s; }catch(e){}
+let metric = "median", dept = "All", office = "All";
+const OFFICES = ["Dubai","Hong Kong","Singapore"];
+try{ const o=sessionStorage.getItem("mdr-office"); if(o && OFFICES.includes(o)) office=o; }catch(e){}
+try{ const s=sessionStorage.getItem("mdr-dept"); if(s && (s==="All"||ALL_BUCKETS.some(d=>d.name===s))) dept=s; }catch(e){}
 
-const inDept = p => dept==="All" || p.dept===dept;
+const inDept = p => dept==="All" || p.dept===dept || (p.groups||[]).includes(dept);
+const inOffice = p => office==="All" || p.office===office;
+const inView = p => inDept(p) && inOffice(p);
+const viewName = () => [dept==="All"?"":dept, office==="All"?"":office].filter(Boolean).join(", ") || "this view";
+// department plus any groups, leaving out whichever one is being filtered on
+const tags = p => [p.dept].concat(p.groups||[], OFFICES.includes(p.office)?[p.office]:[]).filter(x=>x!==dept && x!==office).join(", ");
 
 function chips(){
-  const all = [{name:"All",people:PEOPLE.length}].concat(DEPTS.map(d=>({name:d.name,people:d.people})));
-  document.getElementById("chips").innerHTML = all.map(d=>`<button type="button" data-dept="${esc(d.name)}" aria-pressed="${d.name===dept}">${esc(d.name==="All"?"All departments":d.name)}<span>${d.people}</span></button>`).join("");
+  const chip = d => `<button type="button" data-dept="${esc(d.name)}" aria-pressed="${d.name===dept}"${d.group?' class="grp"':''}>${esc(d.name==="All"?"All departments":d.name)}<span>${d.people}</span></button>`;
+  const all = [{name:"All",people:PEOPLE.length}].concat(DEPTS);
+  document.getElementById("chips").innerHTML = all.map(chip).join("") + (GROUPS.length ? `<span class="chipdiv" aria-hidden="true"></span>` + GROUPS.map(chip).join("") : "");
   document.querySelectorAll("#chips button").forEach(b=>b.addEventListener("click",()=>setDept(b.dataset.dept)));
+}
+function officeChips(){
+  const all = ["All"].concat(OFFICES);
+  const count = o => PEOPLE.filter(p=>o==="All"||p.office===o).length;
+  document.getElementById("offices").innerHTML = all.map(o=>`<button type="button" data-office="${esc(o)}" aria-pressed="${o===office}">${esc(o==="All"?"All offices":o)}<span>${count(o)}</span></button>`).join("");
+  document.querySelectorAll("#offices button").forEach(b=>b.addEventListener("click",()=>setOffice(b.dataset.office)));
+}
+function setOffice(o){
+  office = o;
+  try{ sessionStorage.setItem("mdr-office", o); }catch(e){}
+  document.querySelectorAll("#offices button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.office===o));
+  render();
 }
 function setDept(d){
   dept = d;
@@ -242,15 +274,16 @@ function setDept(d){
 }
 
 function renderDepts(){
-  const max = Math.max(...DEPTS.map(d=>d.median||0));
-  document.getElementById("depts").innerHTML = DEPTS.map(d=>{
+  const max = Math.max(...ALL_BUCKETS.map(d=>d.median||0));
+  const row = d=>{
     const thin = d.orig < 20;
     return `<li class="${d.name===dept?"sel":""}${thin?" thin":""}"><button type="button" data-dept="${esc(d.name)}" aria-pressed="${d.name===dept}">
       <span class="dn">${esc(d.name)}</span>
       <span class="bar" aria-hidden="true"><i style="width:${(d.median||0)/max*100}%"></i></span>
       <span class="dv">${fmt(d.median)}</span>
       <span class="dm">${d.orig} original posts from ${d.posting} of ${d.staff} people${thin?". Too few posts to compare fairly":""}</span>
-    </button></li>`;}).join("");
+    </button></li>`;};
+  document.getElementById("depts").innerHTML = DEPTS.map(row).join("") + (GROUPS.length ? `<li class="grouphead">Groups overlap the departments above, so people here also count in their own department.</li>` + GROUPS.map(row).join("") : "");
   document.querySelectorAll("#depts button").forEach(b=>b.addEventListener("click",()=>setDept(b.dataset.dept===dept?"All":b.dataset.dept)));
 }
 
@@ -262,7 +295,7 @@ function rowHTML(p, pos, max, low){
   return `<li class="row${low?" low":""}">
     <button type="button" aria-expanded="false">
       <span class="pos">${pos}</span>
-      <span class="who"><b>${esc(p.name)}</b><span>${esc(p.role)}${dept==="All"?`<br>${esc(p.dept)}`:""}</span></span>
+      <span class="who"><b>${esc(p.name)}</b><span>${esc(p.role)}${tags(p)?`<br>${esc(tags(p))}`:""}</span></span>
       <span class="focus">${focus}</span>
       <span class="bar" aria-hidden="true"><i style="width:${w}%"></i></span>
       <span class="val">${fmt(v)}<small>${p.orig} original post${p.orig===1?"":"s"}</small></span>
@@ -276,21 +309,21 @@ function rowHTML(p, pos, max, low){
 
 function render(){
   document.getElementById("metricHead").textContent = heads[metric];
-  const pool = PEOPLE.filter(inDept);
+  const pool = PEOPLE.filter(inView);
   const withPosts = pool.filter(p => p.orig>0);
   const ranked = withPosts.filter(p => p.orig>=MIN_POSTS).sort((a,b)=>b[metric]-a[metric]);
   const low = withPosts.filter(p => p.orig<MIN_POSTS).sort((a,b)=>b[metric]-a[metric]);
   const none = pool.filter(p=>p.orig===0).sort((a,b)=>b.reposts-a.reposts);
-  const silent = SILENT.filter(s=>dept==="All"||s.dept===dept);
+  const silent = SILENT.filter(inView);
   const max = Math.max(1, ...withPosts.map(p=>p[metric]));
-  document.getElementById("ranked").innerHTML = ranked.length ? ranked.map((p,i)=>rowHTML(p,i+1,max,false)).join("") : `<li class="empty">Nobody in ${esc(dept)} has 5 or more original posts yet, so there's no ranking. Open the list below to see who has posted.</li>`;
+  document.getElementById("ranked").innerHTML = ranked.length ? ranked.map((p,i)=>rowHTML(p,i+1,max,false)).join("") : `<li class="empty">Nobody in ${esc(viewName())} has 5 or more original posts yet, so there's no ranking. Open the list below to see who has posted.</li>`;
   document.getElementById("lowlist").innerHTML = low.map(p=>rowHTML(p,"",max,true)).join("");
   document.getElementById("lowcount").textContent = `(${low.length}, fewer than 5 posts each)`;
   document.getElementById("lowwrap").hidden = !low.length;
-  document.getElementById("nolist").innerHTML = none.map(p=>`<li><b>${esc(p.name)}</b><span>${esc(p.dept)}, ${p.reposts} repost${p.reposts===1?"":"s"}</span></li>`).join("");
+  document.getElementById("nolist").innerHTML = none.map(p=>`<li><b>${esc(p.name)}</b><span>${esc([p.dept].concat(p.groups||[]).join(", "))}, ${p.reposts} repost${p.reposts===1?"":"s"}</span></li>`).join("");
   document.getElementById("nocount").textContent = `(${none.length})`;
   document.getElementById("nowrap").hidden = !none.length;
-  document.getElementById("silentlist").innerHTML = silent.map(s=>`<li><b>${esc(s.name)}</b><span>${esc(s.dept)}${s.note?`, ${esc(s.note)}`:""}</span></li>`).join("");
+  document.getElementById("silentlist").innerHTML = silent.map(s=>`<li><b>${esc(s.name)}</b><span>${esc([s.dept].concat(s.groups||[]).join(", "))}${s.note?`, ${esc(s.note)}`:""}</span></li>`).join("");
   document.getElementById("silentcount").textContent = `(${silent.length})`;
   document.getElementById("silentwrap").hidden = !silent.length;
   document.querySelectorAll(".row>button").forEach(b=>b.addEventListener("click",()=>{
@@ -303,7 +336,7 @@ document.querySelectorAll(".controls button").forEach(b=>b.addEventListener("cli
   render();
 }));
 
-chips(); renderDepts(); render();
+chips(); officeChips(); renderDepts(); render();
 </script>
 </body>
 </html>
